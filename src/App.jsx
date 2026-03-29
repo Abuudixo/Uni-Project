@@ -1,40 +1,124 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { C, font } from './constants/theme';
 import Registration from './features/registration/Registration';
 import AssessmentList from './features/assessment/AssessmentList';
 import AssessmentQuiz from './features/assessment/AssessmentQuiz';
 import DoctorReview from './features/doctor/DoctorReview';
+import PatientList from './features/doctor/PatientList';
+import Welcome from './features/landing/Welcome';
+import Login from './features/auth/Login';
+import Profile from './features/profile/Profile';
+import { registerPatient, submitAssessment, getPatient, updatePatient, getPatients } from './api';
 
 export default function App() {
-  const [phase, setPhase] = useState("register");
+  const [phase, setPhase] = useState("welcome"); // phases: welcome, login, register, patient, doctor
   const [patient, setPatient] = useState(null);
   const [activeQ, setActiveQ] = useState(null);
   const [completedKeys, setCompletedKeys] = useState([]);
   const [scores, setScores] = useState({});
+  const [tab, setTab] = useState("assessments");
+  const [doctorSelectedPatient, setDoctorSelectedPatient] = useState(null);
 
-  const onRegDone = data => { setPatient(data); setPhase("patient"); };
-  const onAssessmentDone = (key, score) => {
-    setScores(s => ({ ...s, [key]: score }));
-    setCompletedKeys(k => k.includes(key) ? k : [...k, key]);
+  const onLoginDone = (user) => {
+    setPatient(user);
+    setScores(user.scores || {});
+    const done = Object.keys(user.scores || {}).filter(k => user.scores[k] !== null);
+    setCompletedKeys(done);
+    setPhase(user.role === "doctor" ? "doctor" : "patient");
+    setTab("assessments");
+    setDoctorSelectedPatient(null);
+  };
+
+  const onRegDone = async (data) => {
+    try {
+      const saved = await registerPatient(data);
+      onLoginDone(saved);
+    } catch (err) {
+      console.error("Registration failed:", err);
+      alert(err.message || "Registration failed.");
+    }
+  };
+
+  const onProfileUpdate = async (data) => {
+    try {
+      const updated = await updatePatient(patient._id, data);
+      setPatient(updated);
+    } catch (err) {
+      console.error("Update failed:", err);
+      alert("Failed to save changes.");
+    }
+  };
+
+  const onAssessmentDone = async (key, score) => {
+    try {
+      const updated = await submitAssessment(patient._id, key, score);
+      setScores(updated.scores);
+      setCompletedKeys(k => k.includes(key) ? k : [...k, key]);
+      setActiveQ(null);
+    } catch (err) {
+      console.error("Assessment submit failed:", err);
+      setScores(s => ({ ...s, [key]: score }));
+      setCompletedKeys(k => k.includes(key) ? k : [...k, key]);
+      setActiveQ(null);
+    }
+  };
+
+  const handleDoctorView = async () => {
+    if (patient?._id) {
+      try {
+        const fresh = await getPatient(patient._id);
+        setPatient(fresh);
+        setScores(fresh.scores);
+      } catch { /* use cached */ }
+    }
+    setPhase("doctor");
+  };
+
+  const handleLogout = () => {
+    setPhase("welcome");
+    setPatient(null);
+    setCompletedKeys([]);
+    setScores({});
     setActiveQ(null);
+    setTab("assessments");
   };
 
   const renderInner = () => {
-    if (phase === "register") return <Registration onDone={onRegDone} />;
-    if (phase === "doctor") return <DoctorReview patient={patient} scores={scores} />;
-    if (activeQ) return <AssessmentQuiz assessmentKey={activeQ} onDone={score => onAssessmentDone(activeQ, score)} />;
-    return <AssessmentList completedKeys={completedKeys} onStart={setActiveQ} onDoctorView={() => setPhase("doctor")} />;
+    if (phase === "welcome") return <Welcome onStart={() => setPhase("register")} onLogin={() => setPhase("login")} />;
+    if (phase === "login") return <Login onDone={onLoginDone} onBack={() => setPhase("welcome")} />;
+    if (phase === "register") return <Registration onDone={onRegDone} onBack={() => setPhase("welcome")} />;
+    
+    if (!patient) return <Welcome onStart={() => setPhase("register")} onLogin={() => setPhase("login")} />;
+    
+    if (phase === "doctor") {
+      if (doctorSelectedPatient) {
+        return <DoctorReview patient={doctorSelectedPatient} scores={doctorSelectedPatient.scores || {}} onBack={() => setDoctorSelectedPatient(null)} />;
+      }
+      return <PatientList onSelect={setDoctorSelectedPatient} />;
+    }
+    
+    if (activeQ) return <AssessmentQuiz assessmentKey={activeQ} onDone={score => onAssessmentDone(activeQ, score)} onBack={() => setActiveQ(null)} />;
+    
+    if (tab === "profile") return <Profile user={patient} onLogout={handleLogout} onUpdate={onProfileUpdate} />;
+    
+    return <AssessmentList completedKeys={completedKeys} onStart={setActiveQ} onDoctorView={handleDoctorView} />;
   };
+
+  const showNav = !["welcome", "login", "register"].includes(phase) && !activeQ;
+  const isDoc = patient?.role === "doctor";
 
   return (
     <div style={{ fontFamily: font, background: "#E4DFDA", minHeight: "100vh", paddingTop: 20 }}>
-      {phase !== "register" && (
+      {showNav && (
         <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, paddingBottom: 14 }}>
-          <span style={{ fontSize: 12, color: "#888" }}>View as:</span>
-          {[{ id: "patient", label: "🙋 Patient" }, { id: "doctor", label: "🩺 Doctor" }].map(v => (
-            <button key={v.id} onClick={() => setPhase(v.id)} style={{ padding: "5px 14px", borderRadius: 99, fontSize: 12, fontWeight: 600, fontFamily: font, cursor: "pointer", background: phase === v.id ? C.sage : "#fff", color: phase === v.id ? "#fff" : C.slate, border: `1px solid ${phase === v.id ? C.sage : C.border}` }}>{v.label}</button>
-          ))}
-          <button onClick={() => { setPhase("register"); setPatient(null); setCompletedKeys([]); setScores({}); setActiveQ(null); }} style={{ padding: "5px 10px", borderRadius: 99, fontSize: 11, fontFamily: font, cursor: "pointer", background: "#fff", color: C.muted, border: `1px solid ${C.border}` }}>↺ Reset</button>
+          <span style={{ fontSize: 12, color: "#888" }}>Logged in as:</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: C.sageDark }}>{patient.firstName} ({patient.role})</span>
+          {isDoc && (
+             <button onClick={() => setPhase(phase === "doctor" ? "patient" : "doctor")} style={{ padding: "5px 14px", borderRadius: 99, fontSize: 12, fontWeight: 600, fontFamily: font, cursor: "pointer", background: C.sage, color: "#fff", border: "none" }}>
+               {phase === "doctor" ? "View Patients" : "🩺 Doctor View"}
+             </button>
+          )}
+          {!["doctor", "profile"].includes(tab) && <button onClick={handleLogout} style={{ padding: "5px 10px", borderRadius: 99, fontSize: 11, fontFamily: font, cursor: "pointer", background: "#fff", color: C.muted, border: `1px solid ${C.border}` }}>Log Out</button>}
         </div>
       )}
 
@@ -44,6 +128,17 @@ export default function App() {
         <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
           {renderInner()}
         </div>
+
+        {showNav && phase !== "doctor" && (
+          <div style={{ height: 80, background: C.white, borderTop: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-around", paddingBottom: 10 }}>
+            {[{ id: "assessments", icon: "📋", label: "Home" }, { id: "profile", icon: "👤", label: "Profile" }].map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)} style={{ background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", opacity: tab === t.id ? 1 : 0.4, transition: "0.2s" }}>
+                <span style={{ fontSize: 22 }}>{t.icon}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: tab === t.id ? C.sageDark : C.muted }}>{t.label}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

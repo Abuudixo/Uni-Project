@@ -5,7 +5,7 @@ import NavBar from '../../components/ui/NavBar';
 import ProgressBar from '../../components/ui/ProgressBar';
 import Btn from '../../components/ui/Btn';
 
-export default function AssessmentQuiz({ assessmentKey, onDone }) {
+export default function AssessmentQuiz({ assessmentKey, onDone, onBack }) {
   const a = ASSESSMENTS[assessmentKey];
   const [idx, setIdx] = useState(0);
   const [answers, setAnswers] = useState({});
@@ -24,7 +24,7 @@ export default function AssessmentQuiz({ assessmentKey, onDone }) {
   if (finished) {
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.cream, fontFamily: font }}>
-        <NavBar title={`${a.name} Results`} sub={a.full} />
+        <NavBar title={`${a.name} Results`} sub={a.full} onBack={() => onDone(score)} />
         <div style={{ flex: 1, overflowY: "auto", padding: "24px 18px" }}>
           <div style={{ background: sev.bg, borderRadius: 20, padding: 20, border: `1px solid ${sev.color}33`, marginBottom: 20, textAlign: "center" }}>
             <div style={{ fontSize: 48, marginBottom: 10 }}>{score <= 4 ? "🌱" : score <= 9 ? "🌤" : score <= 14 ? "⛅" : "🌧"}</div>
@@ -60,7 +60,7 @@ export default function AssessmentQuiz({ assessmentKey, onDone }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: C.cream, fontFamily: font }}>
-      <NavBar title={a.name} sub={`${a.about} · ${a.duration}`} />
+      <NavBar title={a.name} sub={`${a.about} · ${a.duration}`} onBack={onBack} />
       <div style={{ padding: "12px 18px 8px", background: C.white, borderBottom: `1px solid ${C.border}` }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
           <span style={{ fontSize: 12, color: C.muted }}>{idx + 1} of {a.questions.length}</span>
